@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /src/
+Disallow: /scripts/
+Disallow: /webdesign/
+
+Sitemap: https://almara-3.cz/sitemap.xml
