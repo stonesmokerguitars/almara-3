@@ -1,0 +1,7 @@
+<?php get_header(); ?>
+<main id="main" class="shell section">
+	<?php if (have_posts()) : while (have_posts()) : the_post(); ?>
+		<article <?php post_class('prose'); ?>><h1><?php the_title(); ?></h1><?php the_content(); ?></article>
+	<?php endwhile; else : ?><h1>Stránka nebyla nalezena</h1><?php endif; ?>
+</main>
+<?php get_footer(); ?>
