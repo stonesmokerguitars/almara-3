@@ -1,1 +1,6 @@
 .idea
+
+# Codex-local QA/temp workspace. Keep the directory itself in Git so it is
+# available immediately after clone/pull, but never commit its contents.
+.codex-tmp/*
+!.codex-tmp/.gitkeep
