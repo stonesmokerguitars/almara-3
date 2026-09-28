@@ -1,0 +1,19 @@
+# Repository-scoped Codex permissions.
+# Loaded only when this project is marked as trusted in Codex.
+
+sandbox_mode = "workspace-write"
+approval_policy = "never"
+
+[sandbox_workspace_write]
+# Allow local development/QA tools to access localhost and install a missing
+# project-local QA dependency when necessary, while filesystem writes remain
+# limited by the workspace sandbox.
+network_access = true
+# Do not treat macOS/system temp locations as writable workspace roots.
+exclude_tmpdir_env_var = true
+exclude_slash_tmp = true
+
+[shell_environment_policy]
+# Filter inherited environment variables whose names look like credentials
+# (KEY, SECRET, TOKEN, etc.) from commands spawned by Codex.
+ignore_default_excludes = false
