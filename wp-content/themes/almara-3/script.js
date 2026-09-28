@@ -10,33 +10,25 @@
   const menuToggle = $('.menu-toggle');
   const mainNav = $('#main-nav');
 
-  // Native scrolling stays native; only decorative layers follow the viewport.
-  const parallaxLayers = $$('[data-parallax]');
+  // Keep scroll work limited to the header progress indicator. Images stay still.
   let scrollFrame = 0;
+  let headerScrolled = false;
   const updateScroll = () => {
     scrollFrame = 0;
     const y = window.scrollY;
     const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-    header.classList.toggle('scrolled', y > 12);
+    const scrolled = y > 12;
+    if (scrolled !== headerScrolled) {
+      header.classList.toggle('scrolled', scrolled);
+      headerScrolled = scrolled;
+    }
     header.style.setProperty('--scroll-progress', maxScroll > 0 ? y / maxScroll : 0);
-    parallaxLayers.forEach((image) => {
-      if (reducedMotion.matches || innerWidth <= 600) {
-        image.style.removeProperty('--parallax-y');
-        return;
-      }
-      const box = image.parentElement.getBoundingClientRect();
-      if (box.bottom < -100 || box.top > innerHeight + 100) return;
-      const progress = (innerHeight / 2 - (box.top + box.height / 2)) / innerHeight;
-      const offset = Math.max(-1, Math.min(1, progress)) * Number(image.dataset.parallax);
-      image.style.setProperty('--parallax-y', offset.toFixed(2) + 'px');
-    });
   };
   const requestScrollFrame = () => {
     if (!scrollFrame) scrollFrame = requestAnimationFrame(updateScroll);
   };
   addEventListener('scroll', requestScrollFrame, { passive: true });
   addEventListener('resize', requestScrollFrame, { passive: true });
-  reducedMotion.addEventListener('change', requestScrollFrame);
   updateScroll();
 
   const closeMenu = (restoreFocus = false) => {
@@ -294,7 +286,7 @@
     $('.form-status', form).textContent = 'Poptávka je připravená. Dokončete její odeslání ve své e-mailové aplikaci. Pokud se neotevřela, napište nám na ' + email + '. Vyplněné údaje zde zůstávají.';
     window.location.href = url;
   });
-  const requestedService = new URLSearchParams(location.search).get('sluzba');
+  const requestedService = new URLSearchParams(location.search).get('typ');
   const serviceSelect = $('#type');
   if (requestedService && serviceSelect && [...serviceSelect.options].some(option => option.value === requestedService)) serviceSelect.value = requestedService;
   $('#year').textContent = new Date().getFullYear();

@@ -18,8 +18,14 @@ function almara_import_service_slugs() {
 	return array('kuchyne-na-miru', 'vestavene-skrine', 'obyvaci-steny', 'koupelnovy-nabytek', 'loznice-na-miru', 'komercni-interiery', 'satny-na-miru', 'nabytek-na-miru', 'predsinovy-nabytek', 'detske-pokoje', 'kancelarsky-nabytek', 'dvere-na-miru', 'atypicky-nabytek', 'rekonstrukce-interieru');
 }
 
+function almara_page_template($slug) {
+	if ($slug === 'almara-domu') { return 'templates/almara-home.php'; }
+	if ($slug === 'sluzby') { return 'templates/almara-services.php'; }
+	return 'templates/almara-content.php';
+}
+
 function almara_extract_html($html, $pattern, $default = '') {
-	if (preg_match($pattern, $html, $matches)) { return trim($matches[1]); }
+	if (preg_match($pattern, $html, $matches) && isset($matches[1])) { return trim($matches[1]); }
 	return $default;
 }
 
@@ -40,22 +46,23 @@ function almara_import_content($html, $kind) {
 	}
 	$theme_images = get_template_directory_uri() . '/assets/images/';
 	$main = preg_replace('~((?:\.\./)*assets/images/)~', $theme_images, $main);
+	$main = str_replace('?sluzba=', '?typ=', $main);
 	return trim($main);
 }
 
 function almara_read_hero($html, $kind) {
 	if ($kind === 'home') {
-		$section = almara_extract_html($html, '/<section class="hero"[\s\S]*?<\/section>/i');
+		$section = almara_extract_html($html, '/<section class="hero"[^>]*>([\s\S]*?)<\/section>/i');
 		$pattern = '/<p class="eyebrow hero-enter"><span><\/span>\s*(.*?)<\/p>/s';
 		$image_pattern = '/<div class="hero-picture"><img[^>]+src="([^"]+)"/i';
 		$description_pattern = '/<p class="hero-description hero-enter">(.*?)<\/p>/s';
 	} elseif ($kind === 'service') {
-		$section = almara_extract_html($html, '/<section class="shell page-hero"[\s\S]*?<\/section>/i');
+		$section = almara_extract_html($html, '/<section class="shell page-hero"[^>]*>([\s\S]*?)<\/section>/i');
 		$pattern = '/<p class="eyebrow hero-enter">(.*?)<\/p>/s';
 		$image_pattern = '/<div class="page-hero-visual[^>]*><img[^>]+src="([^"]+)"/i';
 		$description_pattern = '/\x00/';
 	} else {
-		$section = almara_extract_html($html, '/<section class="page-intro shell"[\s\S]*?<\/section>/i');
+		$section = almara_extract_html($html, '/<section class="page-intro shell"[^>]*>([\s\S]*?)<\/section>/i');
 		$pattern = '/<p class="eyebrow hero-enter">(.*?)<\/p>/s';
 		$image_pattern = '/\x00/';
 		$description_pattern = '/\x00/';
@@ -77,9 +84,19 @@ function almara_import_post($file, $title, $slug, $post_type, $kind, $order = 0)
 	$path = get_template_directory() . '/' . $file;
 	if (!is_readable($path)) { return new WP_Error('almara_missing_source', 'Chybí zdrojový soubor: ' . $file); }
 	$existing = get_page_by_path($slug, OBJECT, $post_type);
-	if ($existing) { return $existing->ID; }
+	if ($existing) {
+		if (get_post_meta($existing->ID, '_almara_legacy_source', true) === $file) {
+			update_post_meta($existing->ID, '_almara_imported_html', '1');
+			if ($post_type === 'page') { update_post_meta($existing->ID, '_wp_page_template', almara_page_template($slug)); }
+		}
+		return $existing;
+	}
 	$html = file_get_contents($path);
 	$content = almara_import_content($html, $kind);
+	if (!$content) { return new WP_Error('almara_empty_source', 'Zdrojová stránka neobsahuje obsah: ' . $file); }
+	$administrators = get_users(array('role' => 'administrator', 'number' => 1, 'fields' => 'ID'));
+	$kses_priority = has_filter('content_save_pre', 'wp_filter_post_kses');
+	if ($kses_priority !== false) { remove_filter('content_save_pre', 'wp_filter_post_kses', $kses_priority); }
 	$post_id = wp_insert_post(wp_slash(array(
 		'post_type' => $post_type,
 		'post_status' => 'publish',
@@ -88,8 +105,14 @@ function almara_import_post($file, $title, $slug, $post_type, $kind, $order = 0)
 		'post_content' => $content,
 		'post_excerpt' => sanitize_textarea_field(wp_strip_all_tags(almara_extract_html($html, '/<p class="page-lead hero-enter">([\s\S]*?)<\/p>/i'))),
 		'menu_order' => $order,
+		'post_author' => $administrators ? (int) $administrators[0] : 0,
 	)));
+	if ($kses_priority !== false) { add_filter('content_save_pre', 'wp_filter_post_kses', $kses_priority); }
 	if (is_wp_error($post_id)) { return $post_id; }
+	if (!$post_id) { return new WP_Error('almara_insert_failed', 'WordPress nevytvořil stránku: ' . $file); }
+	update_post_meta($post_id, '_almara_imported_html', '1');
+	update_post_meta($post_id, '_almara_legacy_source', $file);
+	if ($post_type === 'page') { update_post_meta($post_id, '_wp_page_template', almara_page_template($slug)); }
 	$fields = almara_read_hero($html, $kind);
 	foreach ($fields as $key => $value) { if ($value !== '') { update_post_meta($post_id, '_almara_' . $key, $value); } }
 	$seo_title = almara_extract_html($html, '/<title>(.*?)<\/title>/is');
@@ -124,6 +147,16 @@ function almara_import_page() {
 function almara_run_import() {
 	if (!current_user_can('manage_options')) { wp_die('K této akci nemáte oprávnění.'); }
 	check_admin_referer('almara_import_content');
+	$result = almara_import_all();
+	$message = sprintf('Import dokončen. Vytvořeno nových položek: %d.', $result['created']);
+	if ($result['errors']) { $message .= ' Některé soubory se nepodařilo importovat: ' . implode(' ', $result['errors']); }
+	set_transient('almara_import_result_' . get_current_user_id(), $message, 90);
+	wp_safe_redirect(admin_url('tools.php?page=almara-import&imported=1'));
+	exit;
+}
+add_action('admin_post_almara_import_content', 'almara_run_import');
+
+function almara_import_all() {
 	$created = 0;
 	$errors = array();
 	foreach (almara_import_page_list() as $file => $page) {
@@ -142,15 +175,48 @@ function almara_run_import() {
 		if (is_wp_error($result)) { $errors[] = $result->get_error_message(); }
 		elseif (is_int($result)) { $created++; }
 	}
-	if (!$errors) { update_option('almara_content_imported', current_time('mysql')); }
+	if (!$errors) {
+		update_option('almara_content_imported', current_time('mysql'));
+		update_option('almara_bootstrap_version', '2');
+	}
 	flush_rewrite_rules(false);
-	$message = sprintf('Import dokončen. Vytvořeno nových položek: %d.', $created);
-	if ($errors) { $message .= ' Některé soubory se nepodařilo importovat: ' . implode(' ', $errors); }
-	set_transient('almara_import_result_' . get_current_user_id(), $message, 90);
-	wp_safe_redirect(admin_url('tools.php?page=almara-import&imported=1'));
-	exit;
+	return array('created' => $created, 'errors' => $errors);
 }
-add_action('admin_post_almara_import_content', 'almara_run_import');
+
+function almara_ensure_content() {
+	if (get_option('almara_bootstrap_version') === '2' || wp_installing()) { return; }
+	$lock = (int) get_option('almara_bootstrap_lock');
+	if ($lock && time() - $lock < 300) { return; }
+	if ($lock) { delete_option('almara_bootstrap_lock'); }
+	if (!add_option('almara_bootstrap_lock', time(), '', false)) { return; }
+	almara_import_all();
+	delete_option('almara_bootstrap_lock');
+}
+add_action('init', 'almara_ensure_content', 30);
+
+function almara_repair_imported_intro() {
+	if (get_option('almara_intro_repair_version') === '1' || !get_option('almara_content_imported')) { return; }
+	$items = array();
+	foreach (almara_import_page_list() as $file => $page) {
+		$items[] = array($file, $page[1], 'page', $page[2] ? 'home' : 'page');
+	}
+	foreach (almara_import_service_slugs() as $slug) {
+		$items[] = array($slug . '/index.html', $slug, 'sluzba', 'service');
+	}
+	foreach ($items as $item) {
+		list($file, $slug, $type, $kind) = $item;
+		$post = get_page_by_path($slug, OBJECT, $type);
+		$path = get_template_directory() . '/' . $file;
+		if (!$post || get_post_meta($post->ID, '_almara_legacy_source', true) !== $file || !is_readable($path)) { continue; }
+		foreach (almara_read_hero(file_get_contents($path), $kind) as $key => $value) {
+			if ($value !== '' && !get_post_meta($post->ID, '_almara_' . $key, true)) {
+				update_post_meta($post->ID, '_almara_' . $key, $value);
+			}
+		}
+	}
+	update_option('almara_intro_repair_version', '1');
+}
+add_action('init', 'almara_repair_imported_intro', 50);
 
 function almara_import_result_notice() {
 	if (!isset($_GET['imported']) || !current_user_can('manage_options')) { return; }

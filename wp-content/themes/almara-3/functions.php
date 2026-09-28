@@ -37,6 +37,38 @@ function almara_register_content() {
 }
 add_action('init', 'almara_register_content');
 
+// Keep the existing, search-indexed service URLs at the site root.
+function almara_service_root_routes() {
+	foreach (almara_import_service_slugs() as $slug) {
+		add_rewrite_rule('^' . preg_quote($slug, '#') . '/?$', 'index.php?post_type=sluzba&name=' . $slug, 'top');
+	}
+	if (get_option('almara_service_routes_version') !== '1') {
+		flush_rewrite_rules(false);
+		update_option('almara_service_routes_version', '1');
+	}
+}
+add_action('init', 'almara_service_root_routes', 40);
+
+function almara_service_root_link($url, $post) {
+	if ($post->post_type === 'sluzba' && in_array($post->post_name, almara_import_service_slugs(), true)) {
+		return home_url('/' . $post->post_name . '/');
+	}
+	return $url;
+}
+add_filter('post_type_link', 'almara_service_root_link', 10, 2);
+
+function almara_redirect_duplicate_service_url() {
+	if (!is_singular('sluzba')) { return; }
+	$canonical = get_permalink();
+	$request_path = wp_parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+	$canonical_path = wp_parse_url($canonical, PHP_URL_PATH);
+	if ($request_path && $canonical_path && untrailingslashit($request_path) !== untrailingslashit($canonical_path)) {
+		wp_safe_redirect($canonical, 301);
+		exit;
+	}
+}
+add_action('template_redirect', 'almara_redirect_duplicate_service_url');
+
 function almara_assets() {
 	$uri = get_template_directory_uri();
 	$dir = get_template_directory();
@@ -156,6 +188,7 @@ function almara_filter_content($content) {
 	$phone = get_option('almara_phone', '+420 777 123 456');
 	$email = get_option('almara_email', 'info@almara-3.cz');
 	$area = get_option('almara_area', 'Teplice a okolí');
+	$content = str_replace('?sluzba=', '?typ=', $content);
 	return str_replace(array('+420 777 123 456', '+420777123456', 'info@almara-3.cz', 'Teplice a okolí'), array(esc_html($phone), esc_attr(preg_replace('/[^0-9+]/', '', $phone)), esc_html($email), esc_html($area)), $content);
 }
 add_filter('the_content', 'almara_filter_content', 20);
@@ -176,6 +209,11 @@ function almara_meta_description() {
 }
 add_action('wp_head', 'almara_meta_description', 2);
 
+function almara_public_sitemap_providers($provider, $name) {
+	return $name === 'users' ? false : $provider;
+}
+add_filter('wp_sitemaps_add_provider', 'almara_public_sitemap_providers', 10, 2);
+
 function almara_menu_link_attributes($atts, $item, $args) {
 	if (in_array(($args->theme_location ?? ''), array('primary', 'footer'), true)) {
 		$classes = array(($args->theme_location === 'primary') ? 'nav-link' : 'footer-link');
@@ -188,7 +226,10 @@ add_filter('nav_menu_link_attributes', 'almara_menu_link_attributes', 10, 3);
 
 function almara_primary_menu_fallback() {
 	$items = array('Služby' => '/sluzby/', 'Realizace' => '/realizace/', 'Jak pracujeme' => '/jak-pracujeme/', 'O nás' => '/o-nas/', 'Kontakt' => '/kontakt/');
-	foreach ($items as $label => $path) { echo '<a class="nav-link" href="' . esc_url(home_url($path)) . '">' . esc_html($label) . '</a>'; }
+	foreach ($items as $label => $path) {
+		$active = is_page(trim($path, '/')) || ($path === '/sluzby/' && is_singular('sluzba'));
+		echo '<a class="nav-link' . ($active ? ' active' : '') . '" href="' . esc_url(home_url($path)) . '"' . ($active ? ' aria-current="page"' : '') . '>' . esc_html($label) . '</a>';
+	}
 }
 
 function almara_footer_menu_fallback() {
@@ -210,3 +251,4 @@ function almara_flush_rewrites() {
 add_action('after_switch_theme', 'almara_flush_rewrites');
 
 require_once get_template_directory() . '/inc/content-importer.php';
+require_once get_template_directory() . '/inc/render-content.php';

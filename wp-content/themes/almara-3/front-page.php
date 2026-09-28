@@ -18,7 +18,7 @@
 				<a class="hero-scroll hero-enter" href="<?php echo esc_url(home_url('/o-nas/')); ?>"><span class="scroll-line" aria-hidden="true"></span> Poznejte naše řemeslo <svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></a>
 			</div></div><div class="hero-caption"><span class="caption-dot"></span> Přírodní materiály. Přirozený domov.</div><span class="hero-index" aria-hidden="true">01 — ALMARA</span>
 		</section>
-		<?php the_content(); ?>
+		<?php almara_render_content(); ?>
 	<?php endwhile; endif; ?>
 </main>
 <?php get_footer(); ?>

@@ -181,7 +181,7 @@ summary::-webkit-details-marker { display: none; }
 .filter.active { color: var(--brown); }
 .filter.active::after { transform: scaleX(1); }
 .filter span { margin-left: 7px; font-size: 8px; vertical-align: super; opacity: .6; }
-.projects-track { display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 60px) / 4); gap: 20px; overflow-x: auto; padding-block: 3px 20px; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
+.projects-track { display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 60px) / 4); gap: 20px; overflow-x: auto; padding-block: 3px 20px; scroll-snap-type: x proximity; scrollbar-width: none; }
 .projects-track::-webkit-scrollbar { display: none; }
 .project { scroll-snap-align: start; min-width: 0; }
 .project-visual { display: block; position: relative; overflow: hidden; aspect-ratio: .87; background: var(--sand); }
@@ -302,9 +302,11 @@ dialog[open]::backdrop { animation: backdrop-in .35s ease; }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(25px) scale(.98); } to { opacity: 1; transform: none; } }
 @keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
 
-.motion-ready .reveal { opacity: 0; transform: translate3d(0,24px,0); transition: opacity .85s var(--ease), transform 1.1s var(--ease); transition-delay: var(--delay,0ms); }
+.motion-ready .reveal { opacity: 0; transform: translate3d(0,12px,0); transition: opacity .7s var(--ease), transform .85s var(--ease), translate .5s var(--ease), box-shadow .5s var(--ease), border-color .4s, background .4s; transition-delay: var(--delay,0ms); }
 .motion-ready .reveal.visible { opacity: 1; transform: none; }
 @media (hover: hover) and (pointer: fine) {
+  /* Desktop wheel/trackpad input always scrolls the page; arrows still move the gallery. */
+  .projects-track { overflow: hidden; scroll-snap-type: none; }
   .button:hover { transform: translateY(-2px); box-shadow: 0 7px 20px #50341814; }
   .button:hover::before { transform: translateY(0); }
   .button:hover .icon { transform: translateX(4px); }
